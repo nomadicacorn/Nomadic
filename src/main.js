@@ -139,17 +139,47 @@ const input = new Input(canvas);
 const video = $('#video');
 
 // ---------------------------------------------------------------- media
+const ERR_KO = {
+  NotAllowedError: '권한이 거부됨',
+  SecurityError: '보안 정책으로 차단됨',
+  NotFoundError: '장치를 찾지 못함',
+  NotReadableError: '다른 앱이 사용 중',
+  OverconstrainedError: '지원하지 않는 설정',
+  AbortError: '요청이 중단됨',
+};
+const mediaErr = { video: '', audio: '' };
+const errText = e => (e && (ERR_KO[e.name] || e.name || String(e))) || '알 수 없는 오류';
+async function gum(c) {
+  try { return await navigator.mediaDevices.getUserMedia(c); }
+  catch (e) {
+    // 해상도·방향 조건 때문에 실패한 경우, 조건 없이 한 번 더
+    if (c.video && (e.name === 'OverconstrainedError' || e.name === 'NotReadableError')) {
+      return navigator.mediaDevices.getUserMedia({ ...c, video: true });
+    }
+    throw e;
+  }
+}
+
 let stream = null;
 async function startMedia(withAudio) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    mediaErr.video = mediaErr.audio = window.isSecureContext ? '이 브라우저는 미지원' : 'HTTPS가 아님';
+    status(); return;
+  }
   const vc = { facingMode: state.facing, width: { ideal: 640 }, height: { ideal: 480 } };
   const ac = { echoCancellation: true, noiseSuppression: false, autoGainControl: false };
-  let s = null;
-  try { s = await navigator.mediaDevices.getUserMedia({ video: vc, audio: withAudio ? ac : false }); }
-  catch (e) {
+  const needAudio = withAudio && !audio.ok;
+  const s = new MediaStream();
+  try {
+    (await gum({ video: vc, audio: needAudio ? ac : false })).getTracks().forEach(t => s.addTrack(t));
+  } catch (e) {
     // 하나만 허용된 경우를 위해 따로 시도
-    s = new MediaStream();
-    try { (await navigator.mediaDevices.getUserMedia({ video: vc })).getTracks().forEach(t => s.addTrack(t)); } catch (_) {}
-    if (withAudio) try { (await navigator.mediaDevices.getUserMedia({ audio: ac })).getTracks().forEach(t => s.addTrack(t)); } catch (_) {}
+    try { (await gum({ video: vc })).getTracks().forEach(t => s.addTrack(t)); }
+    catch (e2) { mediaErr.video = errText(e2); }
+    if (needAudio) {
+      try { (await gum({ audio: ac })).getTracks().forEach(t => s.addTrack(t)); }
+      catch (e3) { mediaErr.audio = errText(e3); }
+    }
   }
   const vt = s.getVideoTracks()[0];
   if (vt) {
@@ -158,17 +188,31 @@ async function startMedia(withAudio) {
     video.srcObject = stream;
     await video.play().catch(() => {});
     state.hasVideo = true;
+    mediaErr.video = '';
   }
   const at = s.getAudioTracks()[0];
-  if (at && !audio.ok) audio.attach(actx, new MediaStream([at]));
+  if (at && !audio.ok && actx) { audio.attach(actx, new MediaStream([at])); mediaErr.audio = ''; }
   status();
 }
 
 function status() {
+  const el = $('#status');
   const parts = [];
-  if (!state.hasVideo) parts.push('카메라 없음 — 가상의 형상으로 대체');
-  if (!audio.ok) parts.push('마이크 없음 — 꿈꾸는 모드가 대신 연주');
-  $('#status').textContent = parts.join(' · ');
+  if (!state.hasVideo) parts.push(`카메라 없음${mediaErr.video ? ` (${mediaErr.video})` : ''}`);
+  if (!audio.ok) parts.push(`마이크 없음${mediaErr.audio ? ` (${mediaErr.audio})` : ''}`);
+  el.innerHTML = '';
+  if (!parts.length) return;
+  const msg = document.createElement('div');
+  msg.textContent = parts.join(' · ');
+  const btn = document.createElement('button');
+  btn.textContent = '카메라·마이크 다시 연결';
+  btn.onclick = async () => { btn.textContent = '연결 중…'; await startMedia(true); };
+  el.append(msg, btn);
+  if (/권한|보안/.test(mediaErr.video + mediaErr.audio)) {
+    const tip = document.createElement('small');
+    tip.textContent = 'iPhone: 주소창의 가가(aA) → 웹 사이트 설정 → 카메라·마이크 "허용" 후 새로고침';
+    el.append(tip);
+  }
 }
 
 // 전역 움직임량 (CPU): 아주 작은 캔버스에서 프레임 차분
@@ -608,14 +652,15 @@ function frameLoop(nowMs) {
 $('#enter').onclick = async () => {
   $('#enter').disabled = true;
   $('#enter').textContent = '연결 중…';
+  // iOS: 모든 권한 요청을 탭 직후 같은 흐름에서 바로 시작한다 (await 전에)
+  const sensorsP = input.requestSensors();
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
-    await actx.resume();
+    actx.resume();
     reso = new Resonance(actx);
   } catch (e) { console.warn(e); }
-  await input.requestSensors();
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) await startMedia(true);
-  else status();
+  const mediaP = startMedia(true).catch(e => { console.warn(e); status(); });
+  await Promise.all([sensorsP, mediaP]);
   $('#start').classList.add('hidden');
   $('#ui').classList.remove('hidden');
   state.startT = performance.now() / 1000;

@@ -32,16 +32,17 @@ export class Input {
   }
 
   async requestSensors() {
-    try {
-      if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
-        await DeviceOrientationEvent.requestPermission();
-      }
-      if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
-        await DeviceMotionEvent.requestPermission();
-      }
-    } catch (e) { /* 거부되어도 계속 */ }
+    // requestPermission은 탭 직후 동기적으로 호출되어야 iOS가 허용 창을 띄운다
+    const reqs = [];
+    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+      reqs.push(DeviceOrientationEvent.requestPermission().catch(() => 'denied'));
+    }
+    if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
+      reqs.push(DeviceMotionEvent.requestPermission().catch(() => 'denied'));
+    }
     window.addEventListener('deviceorientation', e => this._orient(e));
     window.addEventListener('devicemotion', e => this._motion(e));
+    await Promise.all(reqs);
   }
 
   _orient(e) {
