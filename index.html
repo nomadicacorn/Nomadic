@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ÓRBITA — 빛과 소리의 우주 오퍼레이터</title>
+<meta name="description" content="카메라와 소리, 손끝과 기울기에 반응하는 모바일 우주 인터랙티브. 터치디자이너식 오퍼레이터 파이프라인을 브라우저에서.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<video id="video" playsinline muted autoplay></video>
+<div id="flash"></div>
+
+<section id="start">
+  <div class="title">
+    <small>an interactive cosmos · operator network</small>
+    <h1>ÓRBITA</h1>
+    <p>당신의 얼굴, 목소리, 손끝, 그리고 폰의 기울기가<br>하나의 우주를 연주합니다.</p>
+  </div>
+  <ul class="how">
+    <li><i>◐</i><span><b>카메라</b> 움직이면 별가루가 흩어지고, 얼굴은 별들의 깊이가 됩니다</span></li>
+    <li><i>∿</i><span><b>소리</b> 저음은 팽창, 비트는 윤곽을 별자리로 새기고, 음정은 색이 됩니다</span></li>
+    <li><i>✦</i><span><b>손끝</b> 누르면 중력 우물, 길게 누르고 놓으면 화이트홀, 두 번 탭은 초신성</span></li>
+    <li><i>⟁</i><span><b>기울기 · 흔들기</b> 우주의 중력과 시점이 바뀌고, 흔들면 폭발합니다</span></li>
+    <li><i>♪</i><span><b>공명</b> 우주가 소리로 대답합니다 — 당신의 목소리에 화음을 얹어</span></li>
+  </ul>
+  <button id="enter">우주로 들어가기</button>
+  <p class="fine">카메라와 마이크는 기기 안에서만 처리되며 어디에도 전송되지 않습니다.</p>
+</section>
+
+<div id="fail" class="hidden"></div>
+
+<div id="ui" class="hidden">
+  <div id="hud"></div>
+  <div id="status"></div>
+  <div id="dream-tag">DREAMING · 자극이 없으면 우주가 스스로 즉흥연주합니다</div>
+  <div id="toast"></div>
+  <nav id="tools">
+    <button id="b-sound" title="공명 사운드">♪</button>
+    <button id="b-flip" title="카메라 전환">⟲</button>
+    <button id="b-snap" title="스냅샷">◻</button>
+    <button id="b-rec" title="녹화"><span class="dot"></span></button>
+    <button id="b-hud" title="오퍼레이터 네트워크">⌗</button>
+  </nav>
+  <nav id="modes"></nav>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
