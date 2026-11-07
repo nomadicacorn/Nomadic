@@ -2,3 +2,4 @@ node_modules/
 certs/
 *.pem
 .DS_Store
+dist/

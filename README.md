@@ -32,6 +32,14 @@ npm start            # → http://localhost:8080
 - Node 없이 확인만 하려면: `python3 -m http.server 8080` (보안 헤더는 빠지지만 HTML의 CSP는 적용됨).
 - **키오스크 모드**: 시작 화면 우하단 ⚙️(직원 설정) → "전체 화면", 또는 Chrome `--kiosk http://localhost:8080`.
 
+- **단일 HTML 파일로 배포**(USB·사내 정적 호스팅·서버 없이 더블클릭):
+  ```bash
+  node scripts/build-single.mjs              # → dist/smile-simulator.html (CSP 포함, 오프라인 동작)
+  node scripts/build-single.mjs out.html --hosted   # 실시간 카메라가 막힌 호스팅 환경용
+  ```
+  실시간 카메라를 쓸 수 없는 환경(권한 거부, 호스팅 페이지 등)에서는 `카메라로 촬영하기`가 자동으로
+  **기기 기본 카메라 앱**(태블릿/폰) 또는 파일 선택으로 대체됩니다.
+
 테스트:
 
 ```bash

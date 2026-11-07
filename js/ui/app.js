@@ -82,20 +82,27 @@ $('#consent').addEventListener('change', (e) => {
   $('#btn-upload').disabled = !e.target.checked;
 });
 
+// 실시간 카메라를 쓸 수 없는 환경(호스팅 페이지·권한 거부 등)에서는 기기 기본 카메라 앱으로 촬영
+const NO_LIVE_CAMERA = !!window.SMILESIM_NO_LIVE_CAMERA;
 $('#btn-camera').addEventListener('click', async () => {
+  if (NO_LIVE_CAMERA || !navigator.mediaDevices?.getUserMedia) { $('#file-capture').click(); return; }
   show('camera');
   camera.mirror = settings.mirror;
   camera.zoom = Number($('#cam-zoom').value);
   try {
     await camera.start();
-  } catch (err) {
+  } catch {
+    camera.stop();
     show('welcome');
-    toast(err.name === 'NotAllowedError' ? '카메라 권한이 거부되었습니다.' : err.message || String(err), 5000);
+    toast('실시간 카메라를 쓸 수 없어 기기 카메라로 촬영합니다.', 3500);
+    $('#file-capture').click();
   }
 });
 
 $('#btn-upload').addEventListener('click', () => $('#file-input').click());
-$('#file-input').addEventListener('change', async (e) => {
+$('#file-input').addEventListener('change', onPickFile);
+$('#file-capture').addEventListener('change', onPickFile);
+async function onPickFile(e) {
   const file = e.target.files?.[0];
   e.target.value = '';
   if (!file) return;
@@ -112,7 +119,7 @@ $('#file-input').addEventListener('change', async (e) => {
   } catch {
     toast('이미지를 열 수 없습니다.');
   }
-});
+}
 
 $('#btn-demo').addEventListener('click', () => {
   const { img, guide } = makeDemoImage();
