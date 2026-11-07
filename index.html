@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- 개인정보 보호: 외부로 어떤 데이터도 전송할 수 없도록 connect-src 'none' -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob: mediastream:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'self'" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>스마일 시뮬레이터</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- 1. 시작 / 개인정보 안내 -->
+  <section id="screen-welcome" class="screen active" aria-label="시작">
+    <div class="welcome-card">
+      <h1>나의 새로운 미소 미리보기</h1>
+      <p class="lead">치아 사진을 찍으면 <b>미백 · 레진 · 라미네이트 · 보철 · 교정</b> 후의 모습을 바로 보여드려요.</p>
+      <ul class="privacy-list">
+        <li>📵 사진은 <b>이 기기 안에서만</b> 처리되며 서버로 전송되지 않습니다.</li>
+        <li>🗑️ 상담이 끝나거나 일정 시간 사용이 없으면 <b>자동으로 삭제</b>됩니다.</li>
+        <li>💾 직원 설정에서 허용한 경우에만 결과 이미지를 저장할 수 있습니다.</li>
+        <li>⚠️ 결과는 상담용 <b>시뮬레이션</b>이며 실제 치료 결과와 다를 수 있습니다.</li>
+      </ul>
+      <label class="consent"><input type="checkbox" id="consent" /> 위 내용을 확인했으며 촬영에 동의합니다.</label>
+      <div class="welcome-actions">
+        <button id="btn-camera" class="btn primary xl" disabled>📷 카메라로 촬영하기</button>
+        <button id="btn-upload" class="btn xl" disabled>🖼️ 사진 불러오기</button>
+        <button id="btn-demo" class="btn ghost">데모 사진으로 체험</button>
+      </div>
+      <input type="file" id="file-input" accept="image/*" hidden />
+    </div>
+    <button id="btn-settings" class="icon-btn corner" title="직원 설정" aria-label="직원 설정">⚙️</button>
+  </section>
+
+  <!-- 2. 촬영 -->
+  <section id="screen-camera" class="screen" aria-label="촬영">
+    <div class="camera-stage">
+      <canvas id="camera-canvas"></canvas>
+      <div id="countdown" class="countdown" hidden></div>
+      <div class="camera-hint">입을 벌리고 <b>"이~"</b> 하며 웃어 주세요. 치아가 <b>점선 안</b>에 오도록 맞춰 주세요.</div>
+    </div>
+    <div class="camera-bar">
+      <button id="btn-cam-back" class="btn">← 처음으로</button>
+      <label class="zoom">확대 <input type="range" id="cam-zoom" min="1" max="3" step="0.05" value="1.4" /></label>
+      <button id="btn-shoot" class="btn primary xl">⏺ 촬영 (3초 후)</button>
+    </div>
+  </section>
+
+  <!-- 3. 시뮬레이션 스튜디오 -->
+  <section id="screen-studio" class="screen" aria-label="시뮬레이션">
+    <div class="studio">
+      <div class="stage-wrap">
+        <div class="toolbar" role="toolbar" aria-label="보기 및 도구">
+          <div class="seg-group" id="compare-group">
+            <button data-compare="original">원본</button>
+            <button data-compare="result" class="on">결과</button>
+            <button data-compare="split">슬라이더 비교</button>
+            <button data-compare="side">나란히</button>
+          </div>
+          <div class="seg-group" id="guide-group">
+            <button data-guide="midline">정중선</button>
+            <button data-guide="golden">황금비율</button>
+            <button data-guide="smile">스마일라인</button>
+            <button data-guide="mask">치아영역</button>
+          </div>
+          <button id="btn-hold" class="btn small">누르고 있으면 원본</button>
+        </div>
+        <div class="stage" id="stage">
+          <canvas id="view"></canvas>
+          <div id="busy" class="busy" hidden>계산 중…</div>
+        </div>
+        <div class="tool-hint" id="tool-hint"></div>
+      </div>
+
+      <aside class="panel">
+        <nav class="tabs" role="tablist">
+          <button class="tab on" data-tab="treat">치료 선택</button>
+          <button class="tab" data-tab="detail">세부 조정</button>
+          <button class="tab" data-tab="area">영역 보정</button>
+          <button class="tab" data-tab="info">기능 현황</button>
+        </nav>
+
+        <div class="tab-body on" data-tab="treat">
+          <p class="muted">원하는 치료를 누르면 변화된 모습이 바로 보여요.</p>
+          <div class="presets" id="presets">
+            <button data-preset="whitening"><span class="pi">✨</span><b>치아 미백</b><small>누런 치아를 밝게</small></button>
+            <button data-preset="resin"><span class="pi">🩹</span><b>레진</b><small>착색·작은 틈 메움</small></button>
+            <button data-preset="laminate"><span class="pi">💎</span><b>라미네이트</b><small>표면·색·틈 정리</small></button>
+            <button data-preset="prosthetic"><span class="pi">👑</span><b>보철(크라운)</b><small>새 치아 형태 디자인</small></button>
+            <button data-preset="ortho"><span class="pi">🦷</span><b>치아 교정</b><small>가지런한 배열</small></button>
+            <button data-preset="combo"><span class="pi">🌟</span><b>교정 + 미백</b><small>복합 플랜</small></button>
+          </div>
+          <button class="btn ghost wide" data-preset="none">치료 효과 모두 끄기</button>
+          <div class="shade-box">
+            <div>현재 치아 색(추정): <b id="shade-est">-</b></div>
+            <div class="muted small">사진 조명에 따라 달라질 수 있는 참고값입니다.</div>
+          </div>
+        </div>
+
+        <div class="tab-body" data-tab="detail">
+          <details open>
+            <summary><label><input type="checkbox" data-on="whitening" /> 미백</label></summary>
+            <div class="field"><span>현재 쉐이드</span><select id="wh-from"></select></div>
+            <div class="field"><span>목표 쉐이드</span><select id="wh-to"></select></div>
+            <div class="field"><span>강도</span><input type="range" data-param="whitening.strength" min="0" max="1" step="0.05" /></div>
+          </details>
+          <details>
+            <summary><label><input type="checkbox" data-on="resin" /> 레진</label></summary>
+            <div class="field"><span>착색 제거</span><input type="range" data-param="resin.stain" min="0" max="1" step="0.05" /></div>
+            <div class="field"><span>틈 메우기</span><input type="range" data-param="resin.gap" min="0" max="1" step="0.05" /></div>
+          </details>
+          <details>
+            <summary><label><input type="checkbox" data-on="veneer" /> 라미네이트 표면</label></summary>
+            <div class="field"><span>매끈함</span><input type="range" data-param="veneer.smooth" min="0" max="1" step="0.05" /></div>
+          </details>
+          <details>
+            <summary><label><input type="checkbox" data-on="template" /> 보철 스마일 템플릿</label></summary>
+            <div class="field"><span>치아 형태</span><select data-param="template.style"><option value="oval">오벌(부드러운)</option><option value="square">스퀘어(남성적)</option><option value="triangle">트라이앵글(갸름한)</option></select></div>
+            <div class="field"><span>개수</span><select data-param="template.count" data-num="1"><option value="6">6 (전치)</option><option value="8">8</option><option value="10">10</option></select></div>
+            <div class="field"><span>쉐이드</span><select id="tpl-shade"></select></div>
+            <div class="field"><span>중절치 폭</span><input type="range" data-param="template.wScale" min="0.6" max="1.6" step="0.01" /></div>
+            <div class="field"><span>길이 비율</span><input type="range" data-param="template.hRatio" min="0.9" max="1.6" step="0.01" /></div>
+            <div class="field"><span>스마일 곡선</span><input type="range" data-param="template.curve" min="0" max="1.5" step="0.05" /></div>
+            <div class="field"><span>불투명도</span><input type="range" data-param="template.opacity" min="0.3" max="1" step="0.05" /></div>
+            <div class="field"><label><input type="checkbox" data-param="template.golden" /> 황금비율(1.618 : 1 : 0.618)</label></div>
+            <button class="btn small" data-tool="template">↔ 템플릿 위치 옮기기</button>
+          </details>
+          <details>
+            <summary><label><input type="checkbox" data-on="ortho" /> 교정 배열</label></summary>
+            <div class="field"><span>교정 정도</span><input type="range" data-param="ortho.strength" min="0" max="1" step="0.05" /></div>
+            <div class="field"><span>아크 강조</span><input type="range" data-param="ortho.arc" min="0" max="1" step="0.05" /></div>
+            <div class="btn-row">
+              <button class="btn small" id="btn-pins-auto">핀 자동 제안</button>
+              <button class="btn small" data-tool="pins">핀 찍기/옮기기</button>
+              <button class="btn small" data-tool="targets">목표 직접 조정</button>
+              <button class="btn small" id="btn-pins-clear">핀 지우기</button>
+            </div>
+            <p class="muted small">각 치아의 <b>절단연(끝) 가운데</b>에 핀을 찍으면 정중선 기준 대칭·스마일 아크로 자동 정렬됩니다.</p>
+          </details>
+        </div>
+
+        <div class="tab-body" data-tab="area">
+          <p class="muted">결과가 어색하면 입술 윤곽과 치아 영역을 보정하세요.</p>
+          <div class="btn-col">
+            <button class="btn" data-tool="contour">👄 입술 안쪽 윤곽 조정</button>
+            <button class="btn" data-tool="brushAdd">🖌️ 치아 영역 추가 (브러시)</button>
+            <button class="btn" data-tool="brushErase">🧽 치아 영역 지우기 (브러시)</button>
+            <button class="btn" data-tool="midline">｜ 얼굴 정중선 지정</button>
+            <button class="btn" data-tool="view">✋ 도구 끄기</button>
+          </div>
+          <div class="field"><span>브러시 크기</span><input type="range" id="brush-size" min="4" max="80" step="1" value="20" /></div>
+          <div class="field"><span>치아 인식 감도</span><input type="range" id="sensitivity" min="-20" max="20" step="1" value="0" /></div>
+          <button class="btn small" id="btn-reset-edits">브러시 보정 초기화</button>
+        </div>
+
+        <div class="tab-body" data-tab="info">
+          <p class="muted">✅ = MVP 구현(기기 내 규칙 기반 영상처리) · 🤖 = 향후 AI 모델 연동 필요</p>
+          <ul id="cap-list" class="cap-list"></ul>
+          <p class="muted small">자세한 내용: docs/FEATURES.md</p>
+        </div>
+
+        <div class="panel-foot">
+          <button id="btn-retake" class="btn">📷 다시 찍기</button>
+          <button id="btn-save" class="btn" hidden>💾 결과 저장</button>
+          <button id="btn-finish" class="btn danger">상담 종료 · 사진 삭제</button>
+        </div>
+      </aside>
+    </div>
+    <div class="disclaimer">시뮬레이션 이미지 · 실제 치료 결과와 다를 수 있으며 진단을 대신하지 않습니다 · 사진은 기기 밖으로 전송되지 않습니다</div>
+  </section>
+
+  <!-- 자동 삭제 경고 -->
+  <div id="idle-warn" class="modal" hidden>
+    <div class="modal-card">
+      <h2>계속 사용하시나요?</h2>
+      <p><b id="idle-count">10</b>초 후 개인정보 보호를 위해 사진이 자동 삭제됩니다.</p>
+      <button id="btn-idle-keep" class="btn primary xl">계속 사용</button>
+    </div>
+  </div>
+
+  <!-- 직원 설정 -->
+  <div id="settings" class="modal" hidden>
+    <div class="modal-card">
+      <h2>직원 설정</h2>
+      <div class="field"><span>자동 삭제(무입력 시간)</span>
+        <select id="set-idle"><option value="60">1분</option><option value="120">2분</option><option value="180">3분</option><option value="300">5분</option><option value="600">10분</option></select></div>
+      <div class="field"><label><input type="checkbox" id="set-download" /> 결과 이미지 저장 허용 (기기 로컬 다운로드)</label></div>
+      <div class="field"><label><input type="checkbox" id="set-mirror" /> 거울 모드(좌우 반전)로 촬영</label></div>
+      <div class="field"><label><input type="checkbox" id="set-hide" /> 화면을 벗어나면(탭 전환 등) 즉시 삭제</label></div>
+      <div class="field"><button id="btn-fullscreen" class="btn small">전체 화면(키오스크)</button></div>
+      <p class="muted small">설정값만 이 브라우저에 저장되며 환자 사진은 어디에도 저장되지 않습니다.</p>
+      <button id="btn-settings-close" class="btn primary">닫기</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="js/ui/app.js"></script>
+</body>
+</html>

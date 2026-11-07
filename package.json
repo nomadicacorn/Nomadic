@@ -1,0 +1,13 @@
+{
+  "name": "smile-simulator",
+  "version": "0.1.0",
+  "description": "치과 상담용 스마일 시뮬레이터 (on-device, 무설치 웹앱 MVP)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/core.test.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}
