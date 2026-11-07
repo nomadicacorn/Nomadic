@@ -197,11 +197,13 @@ uniform sampler2D uCam;
 uniform int uSize;
 uniform mat3 uRot;
 uniform float uAspect, uPointScale, uTime, uHue, uHasCam, uK;
+uniform float uSustain, uWarm;
 uniform vec4 uAudio;
 uniform vec4 uMode;
 uniform vec2 uCamScale;
 out vec3 vCol;
 out float vA;
+vec3 hue2rgb(float h){ return clamp(abs(fract(h + vec3(0.0, 2.0/3.0, 1.0/3.0))*6.0 - 3.0) - 1.0, 0.0, 1.0); }
 vec3 palette(float t){
   // 우주 팔레트: 보라 → 마젠타 → 청록 → 심연의 남색 (순환)
   vec3 c0 = vec3(0.42, 0.22, 1.00);
@@ -232,15 +234,28 @@ void main(){
   else { vec2 c = (uv - 0.5) * vec2(1.0, 1.3); L = smoothstep(0.42, 0.1, length(c) + 0.06*sin(atan(c.y,c.x)*5.0 + uTime)); }
   float vis = mix(1.0, smoothstep(0.08, 0.6, L) + 0.03, uMode.y);
 
+  float life = P.w;
+  float age = clamp(1.0 - life, 0.0, 1.0);
+  float energy = clamp(spd*0.22 + uAudio.w*0.7, 0.0, 1.0);
+  // 길이: 자극이 오래 이어질수록 팔레트가 좁은 보라빛에서 무지개 전체로 퍼진다
+  float spread = 0.2 + 0.8*uSustain;
+  // 별의 일생: 태어날 땐 청록, 나이 들수록 마젠타 → 호박색으로 (age)
+  float h = uHue + (seed - 0.5)*spread + age*(0.25 + 0.35*uSustain) + energy*0.1;
+  vec3 rainbow = hue2rgb(h);
+  rainbow = mix(vec3(dot(rainbow, vec3(0.3, 0.59, 0.11))), rainbow, 0.55 + 0.45*energy);
   float t = fract(seed*0.35 + uHue + spd*0.06 + P.z*0.08);
-  vec3 col = palette(t);
-  col = mix(col, vec3(1.0, 0.95, 0.9), smoothstep(2.5, 6.0, spd)*0.6);
+  vec3 col = mix(palette(t), rainbow, 0.35 + 0.55*uSustain);
+  // 강도: 느리면 차가운 빛, 빠를수록 산호 → 금빛 → 백열
+  vec3 hot = mix(vec3(1.0, 0.42, 0.35), vec3(1.0, 0.82, 0.35), fract(seed*7.31));
+  col = mix(col, hot, smoothstep(1.2, 3.5, spd)*0.65);
+  col = mix(col, vec3(1.0, 0.97, 0.92), smoothstep(4.0, 7.0, spd)*0.6);
+  // 노을 시간에는 우주 전체가 살짝 따뜻해진다
+  col = mix(col, col*vec3(1.2, 0.85, 0.7) + vec3(0.06, 0.02, 0.0), uWarm*0.45);
   bool star = seed > 0.992;
   if (star) col = mix(col, vec3(1.0), 0.6);
 
-  float life = P.w;
   float fade = smoothstep(0.0, 0.12, life);
-  vA = fade * vis * (0.16 + 0.14*uAudio.w + 0.1*uAudio.z) * (star ? 3.0 : 1.0);
+  vA = fade * vis * (0.16 + 0.14*uAudio.w + 0.1*uAudio.z + 0.08*energy) * (star ? 3.0 : 1.0);
   vCol = col;
   float sz = uPointScale * (0.5 + seed*1.2) * (1.0 + uAudio.x*0.9) / depth;
   if (star) sz *= 2.6;
@@ -256,6 +271,92 @@ void main(){
   float d2 = dot(c,c);
   float a = exp(-d2*22.0) + exp(-d2*90.0)*0.6;
   o = vec4(vCol * vA * a, 1.0);
+}`;
+
+
+// ---------------------------------------------------------------- spirits (눈을 가진 작은 정령들)
+export const SPIRIT_VS = H + `
+uniform sampler2D uPos;
+uniform sampler2D uVel;
+uniform int uSize, uStride;
+uniform mat3 uRot;
+uniform float uAspect, uScale, uTime, uHue, uK, uLevel, uBeat, uSustain, uWarm;
+uniform vec4 uMode;
+uniform vec4 uHoles[5];
+out vec3 vCol;
+out float vA, vBlink, vSurprise, vTilt;
+out vec2 vLook;
+vec3 hue2rgb(float h){ return clamp(abs(fract(h + vec3(0.0, 2.0/3.0, 1.0/3.0))*6.0 - 3.0) - 1.0, 0.0, 1.0); }
+vec3 proj(vec3 q){
+  vec3 p = uRot * q;
+  float depth = 2.6 - p.z;
+  return vec3(p.x*uK*2.6/(depth*uAspect), p.y*uK*2.6/depth, depth);
+}
+void main(){
+  int id = gl_VertexID * uStride + uStride/2;
+  ivec2 ij = ivec2(id % uSize, id / uSize);
+  vec4 P = texelFetch(uPos, ij, 0);
+  vec4 V = texelFetch(uVel, ij, 0);
+  float seed = fract(V.w*7.13 + float(gl_VertexID)*0.618);
+  vec3 a = proj(P.xyz);
+  gl_Position = vec4(a.xy, 0.0, 1.0);
+  // 시선: 기본은 움직이는 방향, 손끝이 있으면 그쪽을 바라본다
+  vec3 b = proj(P.xyz + V.xyz*0.12);
+  vec2 d = (b.xy - a.xy) * vec2(uAspect, 1.0);
+  vec2 look = length(d) > 1e-4 ? normalize(d) * min(1.0, length(d)*25.0) : vec2(0.0);
+  for (int i = 0; i < 5; i++) {
+    vec4 h = uHoles[i];
+    if (h.w < 0.5) continue;
+    vec2 to = ((h.xy*2.0 - 1.0) - a.xy) * vec2(uAspect, 1.0);
+    look = mix(look, normalize(to + 1e-4), 0.85);
+  }
+  vLook = look;
+  // 깜빡임: 각자 다른 리듬으로
+  float bt = fract(uTime/(3.0 + seed*4.0) + seed*13.0);
+  vBlink = step(bt, 0.04);
+  vSurprise = clamp(uLevel*1.1 + uBeat*0.9, 0.0, 1.0);
+  vTilt = sin(uTime*(0.8 + seed) + seed*20.0) * 0.25;
+  vec3 tint = hue2rgb(uHue + seed*(0.3 + 0.6*uSustain));
+  vCol = mix(vec3(0.94, 0.96, 1.0), tint, 0.14 + 0.22*uSustain);
+  vCol = mix(vCol, vec3(1.0, 0.86, 0.7), uWarm*0.35);
+  float fade = smoothstep(0.0, 0.15, P.w) * smoothstep(0.15, 0.6, a.z);
+  vA = fade * (1.0 - uMode.y*0.55);
+  float sz = uScale * (0.65 + seed*0.7) * (1.0 + vSurprise*0.25) / a.z;
+  gl_PointSize = a.z < 0.2 ? 0.0 : clamp(sz, 0.0, 90.0);
+}`;
+
+export const SPIRIT_FS = H + `
+in vec3 vCol;
+in float vA, vBlink, vSurprise, vTilt;
+in vec2 vLook;
+out vec4 o;
+float ellipse(vec2 p, vec2 r){ return length(p / r); }
+void main(){
+  vec2 c = gl_PointCoord - 0.5;
+  c.y = -c.y;
+  float cs = cos(vTilt), sn = sin(vTilt);
+  c = mat2(cs, -sn, sn, cs) * c;
+  // 몸: 둥근 머리 + 살짝 넓은 아랫부분
+  float head = ellipse(c - vec2(0.0, 0.04), vec2(0.27, 0.25));
+  float bodyD = min(head, ellipse(c - vec2(0.0, -0.12), vec2(0.2, 0.2)));
+  float body = smoothstep(1.0, 0.9, bodyD);
+  float shade = 0.82 + 0.18*smoothstep(0.3, -0.2, c.y + c.x*0.5);
+  // 눈: 세로로 긴 검은 눈, 놀라면 커지고, 깜빡이면 가늘어진다
+  vec2 look = vLook * 0.05;
+  vec2 er = vec2(0.058, 0.08) * (1.0 + vSurprise*0.4);
+  if (vBlink > 0.5) er.y *= 0.12;
+  vec2 e1 = c - (vec2(-0.095, 0.06) + look);
+  vec2 e2 = c - (vec2( 0.095, 0.06) + look);
+  float eye = max(smoothstep(1.0, 0.75, ellipse(e1, er)), smoothstep(1.0, 0.75, ellipse(e2, er)));
+  float glint = max(smoothstep(0.016, 0.004, length(e1 - vec2(0.018, 0.03))),
+                    smoothstep(0.016, 0.004, length(e2 - vec2(0.018, 0.03)))) * (1.0 - vBlink);
+  // 입: 놀랐을 때만 작게 벌어진다
+  float mouth = smoothstep(1.0, 0.7, ellipse(c - vec2(0.0, -0.05) - look*0.6, vec2(0.016, 0.022*vSurprise + 0.001))) * step(0.5, vSurprise);
+  vec3 col = vCol * shade;
+  col = mix(col, vec3(0.03, 0.02, 0.06), max(eye, mouth));
+  col += glint * 0.9;
+  float halo = exp(-dot(c, c)*10.0) * (1.0 - body) * 0.45;
+  o = vec4((col*body + vCol*halo) * vA, body * vA);
 }`;
 
 // ---------------------------------------------------------------- feedback
@@ -332,8 +433,9 @@ export const FINAL_FS = H + `
 uniform sampler2D uFb;
 uniform sampler2D uBloom;
 uniform sampler2D uCam;
-uniform float uTime, uAberr, uAspect, uGhost, uHasCam, uExposure;
-uniform vec2 uCamScale, uRes, uParallax;
+uniform float uTime, uAberr, uAspect, uGhost, uHasCam, uExposure, uStarVis;
+uniform vec2 uCamScale, uRes, uParallax, uSun;
+uniform vec3 uSkyTop, uSkyHor, uSkyGlow;
 uniform vec4 uHoles[5];
 in vec2 vUv;
 out vec4 o;
@@ -370,8 +472,8 @@ void main(){
   vec2 q = uv*vec2(uAspect,1.0)*1.6 + uParallax*0.05;
   float neb = vnoise(q*1.3 + uTime*0.01)*0.6 + vnoise(q*3.1 - uTime*0.015)*0.3 + vnoise(q*7.0)*0.1;
   neb = pow(neb, 3.0);
-  col += vec3(0.08, 0.03, 0.16)*neb + vec3(0.0, 0.03, 0.06)*neb*neb;
-  col += stars(uv);
+  col += (vec3(0.08, 0.03, 0.16) + uSkyHor*0.4)*neb + vec3(0.0, 0.03, 0.06)*neb*neb;
+  col += stars(uv) * uStarVis;
 
   // 카메라 윤곽의 유령 (edge TOP)
   vec4 cam = texture(uCam, (uv-0.5)*uCamScale + 0.5);
@@ -387,6 +489,13 @@ void main(){
     col += vec3(1.0, 0.8, 0.95) * exp(-pow((r - rh * 1.35) / (rh * 0.25 + 0.002), 2.0)) * 0.5;
   }
   col *= uExposure;
+  // 서울의 하늘: 지평선 → 천정 그라데이션 + 해가 있는 쪽의 빛무리
+  float y = clamp(uv.y + uParallax.y*0.04, 0.0, 1.0);
+  vec3 sky = mix(uSkyHor, uSkyTop, smoothstep(0.0, 0.85, pow(y, 0.75)));
+  vec2 sd = (uv - uSun) * vec2(uAspect, 1.0);
+  sky += uSkyGlow * (exp(-dot(sd, sd)*3.5)*0.55 + exp(-dot(sd, sd)*0.6)*0.18);
+  sky *= 0.9 + 0.1*vnoise(uv*vec2(uAspect, 1.0)*2.0 + uTime*0.02);
+  col += sky;
   col = 1.0 - exp(-col*1.25);
   float vig = smoothstep(1.15, 0.25, length(c*vec2(uAspect*0.8, 1.0)));
   col *= mix(0.55, 1.0, vig);

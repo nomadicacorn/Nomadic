@@ -2,6 +2,7 @@ import * as S from './shaders.js';
 import { createProgram, createTexture, createFBO, deleteFBO } from './gl.js';
 import { AudioAnalyzer, Resonance } from './audio.js';
 import { Input } from './input.js';
+import { skyState } from './sky.js';
 
 const MODES = [
   { id: 'nebula', name: 'NEBULA', ko: '성운', hint: '소리가 성운을 부풀리고, 움직임이 별가루를 흩뿌린다' },
@@ -46,6 +47,7 @@ const P = {
   fb: createProgram(gl, S.FULLSCREEN_VS, S.FEEDBACK_FS),
   blur: createProgram(gl, S.FULLSCREEN_VS, S.BLUR_FS),
   fin: createProgram(gl, S.FULLSCREEN_VS, S.FINAL_FS),
+  spirit: createProgram(gl, S.SPIRIT_VS, S.SPIRIT_FS),
 };
 const vao = gl.createVertexArray();
 gl.bindVertexArray(vao);
@@ -131,6 +133,10 @@ const state = {
   hud: !isMobile || innerWidth > 500,
   autoYaw: 0,
   zoomKick: 0,
+  sustain: 0,      // 자극이 얼마나 오래 이어졌는가 (0..1)
+  hueKick: 0,      // 비트·탭이 밀어내는 색의 진행
+  sky: skyState(),
+  skyT: 0,
 };
 
 const audio = new AudioAnalyzer();
@@ -250,10 +256,11 @@ function supernova(power = 1) {
 
 audio.onBeat = v => {
   state.flash = Math.max(state.flash, v);
+  state.hueKick += 0.05 + 0.1 * state.sustain * v;
   if (v > 0.8 && navigator.vibrate) navigator.vibrate(10);
 };
 
-input.onTap = p => { reso && reso.bell(p.y, 0.8); };
+input.onTap = p => { reso && reso.bell(p.y, 0.8); state.hueKick += 0.04 + p.x * 0.06; };
 input.onDoubleTap = () => supernova(1);
 input.onShake = v => supernova(0.6 + v);
 input.onRelease = (p, held) => { if (held > 0.6) { reso && reso.bell(p.y, 1); state.flash = 0.8; } };
@@ -360,6 +367,8 @@ const OPS = [
   ['sop', 'particles1', 'parts'],
   ['top', 'feedback1', 'fb'],
   ['comp', 'dream1', 'dream'],
+  ['top', 'sky1 · 서울', 'sky'],
+  ['chop', 'sustain1', 'sus'],
 ];
 const hudEl = {};
 hud.innerHTML = OPS.map(([fam, name, key]) => `
@@ -401,6 +410,9 @@ function updateHud(fps, audioV) {
   const d = state.modeW.reduce((a, w, i) => a + w * DECAY[i], 0);
   meter('fb', d, d.toFixed(3));
   meter('dream', state.dream, state.dream > 0.5 ? 'DREAMING' : 'awake');
+  const sk = state.sky;
+  meter('sky', Math.max(0, Math.min(1, (sk.el + 18) / 54)), `${sk.hhmm} ${sk.phase} ${sk.el.toFixed(0)}°`);
+  meter('sus', state.sustain, state.sustain.toFixed(2));
   fpsEl.textContent = `${fps.toFixed(0)} fps · ${W}×${H} · ${MODES[state.mode].name}`;
 }
 
@@ -472,6 +484,19 @@ function frameLoop(nowMs) {
   let dh = hueT - state.hue; dh -= Math.round(dh);
   state.hue = (state.hue + dh * (audio.pitch ? 0.12 : 0.01) + 1) % 1;
 
+  // 지속성: 소리·움직임·손끝이 이어질수록 올라가고, 멈추면 천천히 가라앉는다
+  const stim = Math.max(audio.level > 0.15 ? audio.level : 0, state.motion > 0.05 ? state.motion * 2 : 0,
+    input.pointers.size ? 1 : 0, D * 0.45);
+  if (stim > 0.1) state.sustain = Math.min(1, state.sustain + dt * (0.12 + stim * 0.2));
+  else state.sustain = Math.max(0, state.sustain - dt * 0.15);
+  state.hueKick += dt * 0.004 * (1 + state.sustain * 4);   // 오래 이어지면 색이 스스로 흐른다
+  const hue = (state.hue + state.hueKick) % 1;
+
+  // 서울의 하늘: 30초마다 태양 위치 갱신
+  state.skyT -= dt;
+  if (state.skyT <= 0) { state.sky = skyState(); state.skyT = 30; }
+  const sky = state.sky;
+
   for (let i = 0; i < 4; i++) state.modeW[i] += ((i === state.mode ? 1 : 0) - state.modeW[i]) * Math.min(1, dt * 1.8);
   const mw = state.modeW;
   state.burst *= Math.exp(-dt * 6);
@@ -485,6 +510,7 @@ function frameLoop(nowMs) {
   }
 
   const aspect = W / H;
+  let rot = null;
   let camScale = [1, 1];
   const va = camW / camH;
   if (aspect > va) camScale = [1, va / aspect]; else camScale = [aspect / va, 1];
@@ -561,11 +587,14 @@ function frameLoop(nowMs) {
     state.autoYaw += dt * (0.04 + 0.12 * (mw[2] + mw[3]) + A.bass * 0.1 * mw[3]);
     const yaw = input.tilt.x * 0.7 + Math.sin(state.autoYaw) * 0.5 * (1 - mw[1]);
     const pitch = input.tilt.y * 0.55 + 0.25 * mw[2];
-    gl.uniformMatrix3fv(p.u('uRot'), false, rotMat(yaw, pitch));
+    rot = rotMat(yaw, pitch);
+    gl.uniformMatrix3fv(p.u('uRot'), false, rot);
     gl.uniform1f(p.u('uAspect'), aspect);
     gl.uniform1f(p.u('uPointScale'), H * 0.0075 * Math.sqrt(65536 / (PSIZE * PSIZE)) * (1 + mw[1] * 0.3) * (isMobile ? 1 : 1.35));
     gl.uniform1f(p.u('uTime'), t);
-    gl.uniform1f(p.u('uHue'), state.hue);
+    gl.uniform1f(p.u('uHue'), hue);
+    gl.uniform1f(p.u('uSustain'), state.sustain);
+    gl.uniform1f(p.u('uWarm'), sky.warm);
     gl.uniform1f(p.u('uHasCam'), hasCam);
     gl.uniform1f(p.u('uK'), K);
     gl.uniform4f(p.u('uAudio'), A.bass, A.mid, A.high, A.level);
@@ -592,7 +621,7 @@ function frameLoop(nowMs) {
     gl.uniform1f(p.u('uFlash'), state.flash);
     gl.uniform1f(p.u('uAspect'), aspect);
     gl.uniform1f(p.u('uHasCam'), hasCam);
-    gl.uniform1f(p.u('uHueShift'), 0.004 + A.high * 0.02);
+    gl.uniform1f(p.u('uHueShift'), 0.004 + A.high * 0.02 + state.sustain * 0.014);
     gl.uniform4f(p.u('uAudio'), A.bass, A.mid, A.high, A.level);
     gl.uniform2f(p.u('uCamScale'), camScale[0], camScale[1]);
     gl.uniform2f(p.u('uRes'), W, H);
@@ -634,7 +663,37 @@ function frameLoop(nowMs) {
     gl.uniform2f(p.u('uRes'), W, H);
     gl.uniform2f(p.u('uParallax'), input.tilt.x, input.tilt.y);
     gl.uniform4fv(p.u('uHoles'), holes);
+    gl.uniform1f(p.u('uStarVis'), sky.stars);
+    gl.uniform2f(p.u('uSun'), sky.sunX, sky.sunY);
+    gl.uniform3fv(p.u('uSkyTop'), sky.top);
+    gl.uniform3fv(p.u('uSkyHor'), sky.hor);
+    gl.uniform3fv(p.u('uSkyGlow'), sky.glow);
     tri();
+  }
+
+  // ---- 정령들: 화면 위에 또렷하게 (피드백 잔상 없이)
+  {
+    const p = P.spirit; gl.useProgram(p);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    bindTex(p, 'uPos', sim[simI].tex[0], 0);
+    bindTex(p, 'uVel', sim[simI].tex[1], 1);
+    const count = isMobile ? 140 : 200;
+    gl.uniform1i(p.u('uSize'), PSIZE);
+    gl.uniform1i(p.u('uStride'), Math.floor(PSIZE * PSIZE / count));
+    gl.uniformMatrix3fv(p.u('uRot'), false, rot);
+    gl.uniform1f(p.u('uAspect'), aspect);
+    gl.uniform1f(p.u('uScale'), Math.min(W, H * 0.6) * 0.17);
+    gl.uniform1f(p.u('uTime'), t);
+    gl.uniform1f(p.u('uHue'), hue);
+    gl.uniform1f(p.u('uK'), K);
+    gl.uniform1f(p.u('uLevel'), A.level);
+    gl.uniform1f(p.u('uBeat'), A.beat);
+    gl.uniform1f(p.u('uSustain'), state.sustain);
+    gl.uniform1f(p.u('uWarm'), sky.warm);
+    gl.uniform4f(p.u('uMode'), mw[0], mw[1], mw[2], mw[3]);
+    gl.uniform4fv(p.u('uHoles'), holes);
+    gl.drawArrays(gl.POINTS, 0, count);
+    gl.disable(gl.BLEND);
   }
 
   if (snapRequested) {
@@ -666,6 +725,8 @@ $('#enter').onclick = async () => {
   state.startT = performance.now() / 1000;
   running = true;
   setMode(state.mode);
+  const sk = state.sky;
+  setTimeout(() => toast(`서울 ${sk.hhmm} · ${sk.phase}`, '지금 서울의 태양 고도가 하늘색을 정합니다'), 3000);
 };
 
 // 시작 화면 뒤에서도 우주는 이미 움직이고 있다
