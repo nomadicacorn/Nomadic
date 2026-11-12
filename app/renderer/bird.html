@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>파랑새</title>
+<link rel="stylesheet" href="bird.css">
+</head>
+<body>
+  <div id="bird" class="interactive" hidden>
+    <div id="bubble"></div>
+    <img id="birdImg" alt="파랑새" draggable="false">
+  </div>
+
+  <div id="letter" class="interactive" hidden>
+    <div class="letter-head">
+      <span id="letterFrom"></span>
+      <span id="letterTime"></span>
+    </div>
+    <div id="letterText"></div>
+    <div class="letter-actions">
+      <button id="btnReply">✉️ 답장하기</button>
+      <button id="btnThanks" class="primary">고마워 파랑새야 💙</button>
+    </div>
+  </div>
+  <script src="bird.js"></script>
+</body>
+</html>

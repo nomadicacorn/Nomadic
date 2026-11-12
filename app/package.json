@@ -1,0 +1,39 @@
+{
+  "name": "bluebird-notes",
+  "productName": "파랑새 쪽지",
+  "version": "1.0.0",
+  "description": "친구 PC 화면으로 파랑새가 쪽지를 물어다 주는 앱",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable --publish never"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.nomadic.bluebirdnotes",
+    "productName": "파랑새 쪽지",
+    "artifactName": "BluebirdNotes-${version}-${arch}-${target}.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "assets/**"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "파랑새 쪽지"
+    }
+  }
+}

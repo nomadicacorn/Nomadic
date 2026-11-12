@@ -1,0 +1,16 @@
+{
+  "name": "bluebird-post-office",
+  "version": "1.0.0",
+  "description": "파랑새 쪽지 중계 서버 (친구들 쪽지를 전달하는 우체국)",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
